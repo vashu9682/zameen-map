@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Land Area Measurement</title>
+    <title>GPS Land Area Measurement</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,7 +19,6 @@
             position: relative;
             overflow: hidden;
             background-color: #f0f0f0;
-            touch-action: none;
         }
         
         #map {
@@ -36,7 +35,6 @@
             border-radius: 50%;
             border: 2px solid white;
             transform: translate(-8px, -8px);
-            cursor: pointer;
             z-index: 10;
         }
         
@@ -101,6 +99,12 @@
             z-index: 1;
         }
         
+        #gps-status {
+            padding: 10px;
+            background-color: #ffeb3b;
+            font-weight: bold;
+        }
+        
         @media (max-width: 600px) {
             button {
                 padding: 12px 15px;
@@ -115,21 +119,23 @@
 </head>
 <body>
     <div id="instructions">
-        <h2>Universal Land Measurement Tool</h2>
-        <p>1. <strong>Tap anywhere</strong> to start measuring your land.</p>
-        <p>2. Walk around your land and tap <strong>"Add Point"</strong> at each corner.</p>
-        <p>3. For complex shapes: Mark all outer boundaries and any inner boundaries.</p>
-        <p>4. <strong>"Complete Measurement"</strong> to close the shape or <strong>"Calculate Area"</strong> to finish.</p>
+        <h2>GPS Land Area Measurement</h2>
+        <p>1. Click <strong>"Start Measurement"</strong> to begin</p>
+        <p>2. Walk around your land boundary - points will be added automatically</p>
+        <p>3. Click <strong>"Complete Measurement"</strong> when you return to start</p>
+        <p>4. Or click <strong>"Calculate Area"</strong> to finish at any point</p>
     </div>
+    
+    <div id="gps-status">GPS: Waiting for initialization...</div>
     
     <div id="map-container">
         <div id="map"></div>
     </div>
     
     <div id="controls">
-        <button id="add-point">Add Point</button>
-        <button id="undo">Undo</button>
-        <button id="complete" disabled>Complete Shape</button>
+        <button id="start-btn">Start Measurement</button>
+        <button id="add-point" disabled>Add Point Manually</button>
+        <button id="complete" disabled>Complete Measurement</button>
         <button id="calculate" disabled>Calculate Area</button>
         <button id="reset">Reset</button>
     </div>
@@ -137,202 +143,378 @@
     <div id="results">
         <p><strong>Total Area:</strong> <span id="area">0</span> square meters</p>
         <p><strong>Perimeter:</strong> <span id="perimeter">0</span> meters</p>
-        <p><strong>Shape Type:</strong> <span id="shape-type">Not determined</span></p>
+        <p><strong>Points:</strong> <span id="point-count">0</span></p>
+        <p><strong>Accuracy:</strong> <span id="accuracy">0</span> meters</p>
     </div>
 
     <script>
-        const map = document.getElementById('map');
+        // DOM elements
+        const mapElement = document.getElementById('map');
+        const startBtn = document.getElementById('start-btn');
         const addPointBtn = document.getElementById('add-point');
-        const undoBtn = document.getElementById('undo');
         const completeBtn = document.getElementById('complete');
         const calculateBtn = document.getElementById('calculate');
         const resetBtn = document.getElementById('reset');
         const areaDisplay = document.getElementById('area');
         const perimeterDisplay = document.getElementById('perimeter');
-        const shapeTypeDisplay = document.getElementById('shape-type');
+        const pointCountDisplay = document.getElementById('point-count');
+        const accuracyDisplay = document.getElementById('accuracy');
+        const gpsStatusDisplay = document.getElementById('gps-status');
         
+        // Measurement variables
         let points = [];
         let lines = [];
         let distanceLabels = [];
         let areaFills = [];
         let isMeasuring = false;
+        let watchId = null;
         let firstPoint = null;
         
-        // Initialize the map with click event
-        map.addEventListener('click', (e) => {
-            if (!isMeasuring) {
-                startMeasurement(e);
+        // Geographic functions
+        const EARTH_RADIUS = 6371000; // meters
+        
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+        
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const φ1 = toRadians(lat1);
+            const φ2 = toRadians(lat2);
+            const Δφ = toRadians(lat2 - lat1);
+            const Δλ = toRadians(lon2 - lon1);
+            
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            
+            return EARTH_RADIUS * c;
+        }
+        
+        function calculateAreaGeo(coords) {
+            let area = 0;
+            
+            if (coords.length < 3) return 0;
+            
+            // Convert latitude/longitude to cartesian coordinates
+            const cartesian = coords.map(coord => {
+                const φ = toRadians(coord.latitude);
+                const λ = toRadians(coord.longitude);
+                
+                return {
+                    x: EARTH_RADIUS * Math.cos(φ) * Math.cos(λ),
+                    y: EARTH_RADIUS * Math.cos(φ) * Math.sin(λ),
+                    z: EARTH_RADIUS * Math.sin(φ)
+                };
+            });
+            
+            // Calculate area using 3D shoelace formula
+            for (let i = 0; i < cartesian.length; i++) {
+                const j = (i + 1) % cartesian.length;
+                const k = (i + 2) % cartesian.length;
+                
+                // Cross product of vectors from point i
+                const dx1 = cartesian[j].x - cartesian[i].x;
+                const dy1 = cartesian[j].y - cartesian[i].y;
+                const dz1 = cartesian[j].z - cartesian[i].z;
+                
+                const dx2 = cartesian[k].x - cartesian[i].x;
+                const dy2 = cartesian[k].y - cartesian[i].y;
+                const dz2 = cartesian[k].z - cartesian[i].z;
+                
+                // Cross product components
+                const crossX = dy1 * dz2 - dz1 * dy2;
+                const crossY = dz1 * dx2 - dx1 * dz2;
+                const crossZ = dx1 * dy2 - dy1 * dx2;
+                
+                // Dot product with normal vector
+                const dot = cartesian[i].x * crossX + 
+                           cartesian[i].y * crossY + 
+                           cartesian[i].z * crossZ;
+                
+                area += dot > 0 ? Math.sqrt(crossX*crossX + crossY*crossY + crossZ*crossZ) : 0;
             }
-        });
+            
+            return Math.abs(area / 2);
+        }
         
-        // Touch support for mobile devices
-        map.addEventListener('touchstart', (e) => {
-            if (!isMeasuring) {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const mouseEvent = new MouseEvent('click', {
-                    clientX: touch.clientX,
-                    clientY: touch.clientY
-                });
-                map.dispatchEvent(mouseEvent);
+        // GPS functions
+        function startGPS() {
+            if (!navigator.geolocation) {
+                gpsStatusDisplay.textContent = "GPS not supported by your browser";
+                return;
             }
-        }, { passive: false });
+            
+            gpsStatusDisplay.textContent = "GPS: Acquiring position...";
+            gpsStatusDisplay.style.backgroundColor = "#ffeb3b";
+            
+            watchId = navigator.geolocation.watchPosition(
+                position => handlePositionSuccess(position),
+                error => handlePositionError(error),
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 5000
+                }
+            );
+        }
         
-        addPointBtn.addEventListener('click', addPoint);
-        undoBtn.addEventListener('click', undoLastPoint);
-        completeBtn.addEventListener('click', completeMeasurement);
-        calculateBtn.addEventListener('click', calculateArea);
-        resetBtn.addEventListener('click', resetMeasurement);
+        function stopGPS() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+        }
         
-        function startMeasurement(e) {
+        function handlePositionSuccess(position) {
+            const { latitude, longitude, accuracy } = position.coords;
+            
+            gpsStatusDisplay.textContent = `GPS: Active (Accuracy: ${accuracy.toFixed(1)}m)`;
+            gpsStatusDisplay.style.backgroundColor = "#a5d6a7";
+            accuracyDisplay.textContent = `${accuracy.toFixed(1)}m`;
+            
+            if (isMeasuring) {
+                addGPSPoint(latitude, longitude, accuracy);
+            }
+        }
+        
+        function handlePositionError(error) {
+            let message = "GPS Error: ";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    message += "The request to get user location timed out.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    message += "An unknown error occurred.";
+                    break;
+            }
+            
+            gpsStatusDisplay.textContent = message;
+            gpsStatusDisplay.style.backgroundColor = "#ef9a9a";
+        }
+        
+        // Measurement functions
+        function startMeasurement() {
+            if (isMeasuring) return;
+            
             isMeasuring = true;
+            startGPS();
+            
+            startBtn.disabled = true;
             addPointBtn.disabled = false;
-            undoBtn.disabled = false;
+            completeBtn.disabled = false;
+            calculateBtn.disabled = false;
             
-            // Create first point at clicked position
-            const point = createPoint(e.clientX, e.clientY);
-            points.push(point);
-            firstPoint = point;
-            
-            // Update UI
-            addPointBtn.textContent = "Add Next Point";
-            shapeTypeDisplay.textContent = "Measuring...";
+            gpsStatusDisplay.textContent = "GPS: Starting measurement...";
         }
         
-        function addPoint() {
-            if (!isMeasuring || points.length === 0) return;
-            
-            // For demonstration, we'll add points in a circular pattern
-            // In a real app, this would use GPS or user taps on actual positions
-            
-            const lastPoint = points[points.length - 1];
-            const rect = lastPoint.getBoundingClientRect();
-            const lastX = rect.left + rect.width/2;
-            const lastY = rect.top + rect.height/2;
-            
-            // Calculate angle based on number of points (creates a star pattern for demo)
-            const angle = (points.length * 2.5) % (2 * Math.PI);
-            const distance = 80 + (points.length % 3) * 40;
-            
-            const newX = lastX + Math.cos(angle) * distance;
-            const newY = lastY + Math.sin(angle) * distance;
-            
-            const point = createPoint(newX, newY);
-            points.push(point);
-            
-            // Draw line from last point to this one
-            drawLine(points[points.length - 2], point);
-            
-            // Enable buttons after enough points
-            if (points.length >= 2) {
-                completeBtn.disabled = false;
-                calculateBtn.disabled = false;
+        function addGPSPoint(latitude, longitude, accuracy) {
+            // Don't add if accuracy is too poor
+            if (accuracy > 20) {
+                gpsStatusDisplay.textContent = `GPS: Poor accuracy (${accuracy.toFixed(1)}m) - waiting for better signal`;
+                gpsStatusDisplay.style.backgroundColor = "#ffcc80";
+                return;
             }
             
-            updateShapeType();
+            // Don't add if too close to last point (minimum 2m distance)
+            if (points.length > 0) {
+                const lastPoint = points[points.length - 1];
+                const distance = calculateDistance(
+                    lastPoint.latitude, 
+                    lastPoint.longitude,
+                    latitude,
+                    longitude
+                );
+                
+                if (distance < 2) return;
+            }
+            
+            const point = {
+                latitude,
+                longitude,
+                accuracy,
+                timestamp: Date.now()
+            };
+            
+            points.push(point);
+            pointCountDisplay.textContent = points.length;
+            
+            // Create visual point
+            createVisualPoint(point);
+            
+            // Draw lines if we have multiple points
+            if (points.length > 1) {
+                drawVisualLine(points[points.length - 2], point);
+            }
+            
+            // If this is the first point, remember it
+            if (points.length === 1) {
+                firstPoint = point;
+            }
         }
         
-        function undoLastPoint() {
-            if (points.length <= 1) return;
+        function addManualPoint() {
+            if (!isMeasuring || !watchId) return;
             
-            // Remove last point
-            const lastPoint = points.pop();
-            lastPoint.remove();
-            
-            // Remove last line if exists
-            if (lines.length > 0) {
-                const lastLine = lines.pop();
-                lastLine.remove();
-            }
-            
-            // Remove last distance label if exists
-            if (distanceLabels.length > 0) {
-                const lastLabel = distanceLabels.pop();
-                lastLabel.remove();
-            }
-            
-            // Remove area fill if exists
-            clearAreaFills();
-            
-            // Update button states
-            if (points.length < 2) {
-                completeBtn.disabled = true;
-                calculateBtn.disabled = true;
-            }
-            
-            updateShapeType();
+            // Get current position once
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    addGPSPoint(latitude, longitude, accuracy);
+                },
+                error => {
+                    handlePositionError(error);
+                },
+                { enableHighAccuracy: true }
+            );
         }
         
         function completeMeasurement() {
             if (points.length < 3) return;
             
             // Connect last point to first point
-            drawLine(points[points.length - 1], firstPoint);
+            drawVisualLine(points[points.length - 1], firstPoint);
             
             // Calculate the area
             calculateArea();
             
-            // Disable buttons
-            addPointBtn.disabled = true;
-            completeBtn.disabled = true;
-        }
-        
-        function calculateArea() {
-            if (points.length < 3) return;
-            
-            // Convert points to coordinates
-            const coordinates = points.map(point => {
-                const rect = point.getBoundingClientRect();
-                return {
-                    x: rect.left + rect.width/2,
-                    y: rect.top + rect.height/2
-                };
-            });
-            
-            // Calculate area using shoelace formula (works for all polygon types)
-            let area = 0;
-            let perimeter = 0;
-            
-            for (let i = 0; i < coordinates.length; i++) {
-                const j = (i + 1) % coordinates.length;
-                const xi = coordinates[i].x;
-                const yi = coordinates[i].y;
-                const xj = coordinates[j].x;
-                const yj = coordinates[j].y;
-                
-                area += xi * yj - xj * yi;
-                
-                // Calculate perimeter
-                const dx = xj - xi;
-                const dy = yj - yi;
-                perimeter += Math.sqrt(dx*dx + dy*dy);
-            }
-            
-            area = Math.abs(area / 2);
-            
-            // Convert pixels to meters (simplified - in real app use scale or GPS)
-            // Assuming 100px = 1m for demonstration
-            const scaleFactor = 1/100;
-            const areaInMeters = (area * scaleFactor * scaleFactor).toFixed(2);
-            const perimeterInMeters = (perimeter * scaleFactor).toFixed(2);
-            
-            areaDisplay.textContent = areaInMeters;
-            perimeterDisplay.textContent = perimeterInMeters;
+            // Stop GPS updates
+            stopGPS();
             
             // Disable buttons
             addPointBtn.disabled = true;
             completeBtn.disabled = true;
             calculateBtn.disabled = true;
-            
-            // Fill the area for visualization
-            fillArea(coordinates);
-            
-            updateShapeType();
         }
         
-        function fillArea(coordinates) {
-            clearAreaFills();
+        function calculateArea() {
+            if (points.length < 3) return;
             
+            // Calculate area using geographic coordinates
+            const area = calculateAreaGeo(points);
+            areaDisplay.textContent = area.toFixed(2);
+            
+            // Calculate perimeter
+            let perimeter = 0;
+            for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                perimeter += calculateDistance(
+                    points[i].latitude, points[i].longitude,
+                    points[j].latitude, points[j].longitude
+                );
+            }
+            perimeterDisplay.textContent = perimeter.toFixed(2);
+            
+            // Fill the area for visualization
+            fillVisualArea();
+        }
+        
+        function resetMeasurement() {
+            // Stop GPS if running
+            stopGPS();
+            
+            // Remove all visual elements
+            document.querySelectorAll('.point, .line, .distance-label, .area-fill').forEach(el => el.remove());
+            
+            // Reset all arrays
+            points = [];
+            lines = [];
+            distanceLabels = [];
+            areaFills = [];
+            isMeasuring = false;
+            firstPoint = null;
+            
+            // Reset displays
+            areaDisplay.textContent = "0";
+            perimeterDisplay.textContent = "0";
+            pointCountDisplay.textContent = "0";
+            accuracyDisplay.textContent = "0";
+            gpsStatusDisplay.textContent = "GPS: Ready to start";
+            gpsStatusDisplay.style.backgroundColor = "#ffeb3b";
+            
+            // Reset buttons
+            startBtn.disabled = false;
+            addPointBtn.disabled = true;
+            completeBtn.disabled = true;
+            calculateBtn.disabled = true;
+        }
+        
+        // Visualization functions
+        function createVisualPoint(point) {
+            // Convert lat/long to map coordinates (simplified projection)
+            // In a real app, you'd use a proper mapping library like Leaflet
+            const x = (point.longitude + 180) * (window.innerWidth / 360);
+            const y = (90 - point.latitude) * (window.innerHeight / 180);
+            
+            const pointElement = document.createElement('div');
+            pointElement.className = 'point';
+            pointElement.style.left = `${x}px`;
+            pointElement.style.top = `${y}px`;
+            
+            // Add point number
+            const number = document.createElement('div');
+            number.style.color = 'white';
+            number.style.fontSize = '10px';
+            number.style.textAlign = 'center';
+            number.style.lineHeight = '12px';
+            number.textContent = points.length;
+            pointElement.appendChild(number);
+            
+            mapElement.appendChild(pointElement);
+        }
+        
+        function drawVisualLine(startPoint, endPoint) {
+            // Convert lat/long to map coordinates
+            const x1 = (startPoint.longitude + 180) * (window.innerWidth / 360);
+            const y1 = (90 - startPoint.latitude) * (window.innerHeight / 180);
+            const x2 = (endPoint.longitude + 180) * (window.innerWidth / 360);
+            const y2 = (90 - endPoint.latitude) * (window.innerHeight / 180);
+            
+            // Calculate line length and angle
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx*dx + dy*dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            // Create line element
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.width = `${length}px`;
+            line.style.left = `${x1}px`;
+            line.style.top = `${y1}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            mapElement.appendChild(line);
+            lines.push(line);
+            
+            // Create distance label
+            const label = document.createElement('div');
+            label.className = 'distance-label';
+            
+            // Calculate position (midpoint of the line)
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            
+            label.style.left = `${midX}px`;
+            label.style.top = `${midY}px`;
+            
+            // Calculate actual distance
+            const distance = calculateDistance(
+                startPoint.latitude, startPoint.longitude,
+                endPoint.latitude, endPoint.longitude
+            );
+            
+            label.textContent = `${distance.toFixed(1)}m`;
+            mapElement.appendChild(label);
+            distanceLabels.push(label);
+        }
+        
+        function fillVisualArea() {
             // Create SVG polygon to fill the area
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.style.position = 'absolute';
@@ -348,129 +530,27 @@
             polygon.setAttribute("stroke-width", "2");
             
             let pointsStr = '';
-            for (const coord of coordinates) {
-                pointsStr += `${coord.x},${coord.y} `;
+            for (const point of points) {
+                const x = (point.longitude + 180) * (window.innerWidth / 360);
+                const y = (90 - point.latitude) * (window.innerHeight / 180);
+                pointsStr += `${x},${y} `;
             }
             polygon.setAttribute("points", pointsStr.trim());
             
             svg.appendChild(polygon);
-            map.appendChild(svg);
+            mapElement.appendChild(svg);
             areaFills.push(svg);
         }
         
-        function clearAreaFills() {
-            areaFills.forEach(fill => fill.remove());
-            areaFills = [];
-        }
+        // Event listeners
+        startBtn.addEventListener('click', startMeasurement);
+        addPointBtn.addEventListener('click', addManualPoint);
+        completeBtn.addEventListener('click', completeMeasurement);
+        calculateBtn.addEventListener('click', calculateArea);
+        resetBtn.addEventListener('click', resetMeasurement);
         
-        function updateShapeType() {
-            if (points.length < 3) {
-                shapeTypeDisplay.textContent = "Not enough points";
-                return;
-            }
-            
-            // Simple shape detection (for demonstration)
-            if (points.length === 3) {
-                shapeTypeDisplay.textContent = "Triangle";
-            } else if (points.length === 4) {
-                // Check if quadrilateral is convex
-                shapeTypeDisplay.textContent = "Quadrilateral (Convex)";
-            } else if (points.length > 4) {
-                // For complex shapes
-                shapeTypeDisplay.textContent = "Complex Polygon";
-            }
-        }
-        
-        function resetMeasurement() {
-            // Remove all elements
-            points.forEach(point => point.remove());
-            lines.forEach(line => line.remove());
-            distanceLabels.forEach(label => label.remove());
-            areaFills.forEach(fill => fill.remove());
-            
-            // Reset all arrays
-            points = [];
-            lines = [];
-            distanceLabels = [];
-            areaFills = [];
-            isMeasuring = false;
-            firstPoint = null;
-            
-            // Reset displays
-            areaDisplay.textContent = "0";
-            perimeterDisplay.textContent = "0";
-            shapeTypeDisplay.textContent = "Not determined";
-            
-            // Reset buttons
-            addPointBtn.disabled = false;
-            addPointBtn.textContent = "Add Point";
-            undoBtn.disabled = true;
-            completeBtn.disabled = true;
-            calculateBtn.disabled = true;
-        }
-        
-        function createPoint(x, y) {
-            const point = document.createElement('div');
-            point.className = 'point';
-            
-            // Add point number
-            const number = document.createElement('div');
-            number.style.color = 'white';
-            number.style.fontSize = '10px';
-            number.style.textAlign = 'center';
-            number.style.lineHeight = '12px';
-            number.textContent = points.length + 1;
-            point.appendChild(number);
-            
-            point.style.left = `${x}px`;
-            point.style.top = `${y}px`;
-            map.appendChild(point);
-            return point;
-        }
-        
-        function drawLine(startPoint, endPoint) {
-            const startRect = startPoint.getBoundingClientRect();
-            const endRect = endPoint.getBoundingClientRect();
-            
-            const x1 = startRect.left + startRect.width/2;
-            const y1 = startRect.top + startRect.height/2;
-            const x2 = endRect.left + endRect.width/2;
-            const y2 = endRect.top + endRect.height/2;
-            
-            // Calculate line length and angle
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt(dx*dx + dy*dy);
-            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            
-            // Create line element
-            const line = document.createElement('div');
-            line.className = 'line';
-            line.style.width = `${length}px`;
-            line.style.left = `${x1}px`;
-            line.style.top = `${y1}px`;
-            line.style.transform = `rotate(${angle}deg)`;
-            map.appendChild(line);
-            lines.push(line);
-            
-            // Create distance label
-            const label = document.createElement('div');
-            label.className = 'distance-label';
-            
-            // Calculate position (midpoint of the line)
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            
-            label.style.left = `${midX}px`;
-            label.style.top = `${midY}px`;
-            
-            // Convert to meters (simplified)
-            const distanceInMeters = (length / 100).toFixed(2);
-            label.textContent = `${distanceInMeters}m`;
-            
-            map.appendChild(label);
-            distanceLabels.push(label);
-        }
+        // Initialize
+        resetMeasurement();
     </script>
 </body>
 </html>
