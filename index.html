@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Zameen Map Area Calculator</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 500px; width: 100%; }
+    body { font-family: Arial; margin: 10px; }
+    button { margin: 5px; padding: 10px; font-weight: bold; }
+    select { padding: 8px; font-size: 16px; margin: 5px; }
+    .unit-info { font-size: 12px; color: #666; }
+    #unitConversion { margin: 10px 0; }
+    #gpsWarning { color: red; font-weight: bold; display: none; }
+  </style>
+</head>
+<body>
+
+<h2>📍 Zameen Map Area Calculator</h2>
+<div id="gpsWarning">⚠️ GPS is disabled. Please enable to add points.</div>
+
+<div id="map"></div>
+
+<button onclick="addManualPoint()">+ Add Manual Point</button>
+<button onclick="clearPoints()">❌ Clear Points</button>
+<button onclick="calculateArea()">📐 Calculate Area</button>
+
+<div id="unitConversion">
+  <h3>Select Measurement Unit:</h3>
+  <select id="unitSelect" onchange="showUnitInfo()">
+    <option value="sqft">वर्ग फुट (Square Foot)</option>
+    <option value="sqm">वर्ग मीटर (Square Meter)</option>
+    <option value="dismil">डिसमिल (Decimal/Dismil)</option>
+    <option value="katha">कठ्ठा (Katha - Bihar/UP)</option>
+    <option value="bigha">बीघा (Bigha - Bihar)</option>
+    <option value="bigha_up">बीघा (Bigha - UP)</option>
+    <option value="acre">एकड़ (Acre)</option>
+    <option value="hectare">हेक्टेयर (Hectare)</option>
+    <option value="guntha">गुंठा (Guntha - Maharashtra)</option>
+    <option value="cent">सेंट (Cent)</option>
+  </select>
+  <p class="unit-info" id="unitInfo">1 वर्ग फुट = 1 वर्ग फुट</p>
+</div>
+
+<p id="output"></p>
+
+<!-- Leaflet.js -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Turf.js -->
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+<script>
+  let coordinates = [];
+  let map = L.map('map').setView([25.0, 82.0], 18); // default location
+  let gpsEnabled = false;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 22,
+  }).addTo(map);
+
+  let polygon;
+  let markers = [];
+
+  // Unit conversion factors (to square feet)
+  const unitConversions = {
+    sqft: { name: "वर्ग फुट (Square Foot)", factor: 1, info: "1 वर्ग फुट = 1 वर्ग फुट" },
+    sqm: { name: "वर्ग मीटर (Square Meter)", factor: 10.7639, info: "1 वर्ग मीटर = 10.7639 वर्ग फुट" },
+    dismil: { name: "डिसमिल (Decimal/Dismil)", factor: 435.6, info: "1 डिसमिल = 435.6 वर्ग फुट" },
+    katha: { name: "कठ्ठा (Katha)", factor: 1361, info: "1 कठ्ठा = 1361 वर्ग फुट (Bihar standard)" },
+    bigha: { name: "बीघा (Bigha - Bihar)", factor: 27220, info: "1 बीघा = 27,220 वर्ग फुट (20 कठ्ठा)" },
+    bigha_up: { name: "बीघा (Bigha - UP)", factor: 27000, info: "1 बीघा = 27,000 वर्ग फुट (20 कठ्ठा)" },
+    acre: { name: "एकड़ (Acre)", factor: 43560, info: "1 एकड़ = 43,560 वर्ग फुट" },
+    hectare: { name: "हेक्टेयर (Hectare)", factor: 107639, info: "1 हेक्टेयर = 107,639 वर्ग फुट" },
+    guntha: { name: "गुंठा (Guntha)", factor: 1089, info: "1 गुंठा = 1,089 वर्ग फुट (Maharashtra)" },
+    cent: { name: "सेंट (Cent)", factor: 435.6, info: "1 सेंट = 435.6 वर्ग फुट" }
+  };
+
+  function showUnitInfo() {
+    const unit = document.getElementById("unitSelect").value;
+    document.getElementById("unitInfo").textContent = unitConversions[unit].info;
+  }
+
+  function drawLineOnMap() {
+    // Clear existing markers
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    
+    // Add new markers
+    coordinates.forEach((coord, index) => {
+      const marker = L.marker([coord[1], coord[0]])
+        .bindPopup(`Point ${index+1}<br>Lat: ${coord[1].toFixed(6)}<br>Lng: ${coord[0].toFixed(6)}`)
+        .addTo(map);
+      markers.push(marker);
+    });
+    
+    // Draw polygon
+    if (polygon) map.removeLayer(polygon);
+    if (coordinates.length > 1) {
+      polygon = L.polygon(coordinates.map(p => [p[1], p[0]]), { color: 'blue' }).addTo(map);
+      map.fitBounds(polygon.getBounds());
+    }
+  }
+
+  function clearPoints() {
+    coordinates = [];
+    if (polygon) map.removeLayer(polygon);
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    document.getElementById("output").innerHTML = "";
+  }
+
+  // Check GPS status and redirect to settings if disabled
+  function checkGPSPermission() {
+    if (!navigator.permissions) {
+      return Promise.resolve(false);
+    }
+    return navigator.permissions.query({name:'geolocation'})
+      .then(permissionStatus => {
+        return permissionStatus.state === 'granted';
+      })
+      .catch(() => false);
+  }
+
+  function redirectToLocationSettings() {
+    // For Chrome on Android
+    if (navigator.userAgent.includes('Android') && navigator.userAgent.includes('Chrome')) {
+      window.location.href = 'chrome://settings/content/location';
+    }
+    // For other browsers/devices, we can't redirect directly to settings
+    alert("Please enable GPS/Location in your device settings and browser permissions");
+  }
+
+  function addManualPoint() {
+    checkGPSPermission().then(enabled => {
+      if (!enabled) {
+        document.getElementById("gpsWarning").style.display = 'block';
+        redirectToLocationSettings();
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        function (position) {
+          gpsEnabled = true;
+          document.getElementById("gpsWarning").style.display = 'none';
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          coordinates.push([lng, lat]);
+          drawLineOnMap();
+        },
+        function(error) {
+          gpsEnabled = false;
+          document.getElementById("gpsWarning").style.display = 'block';
+          if (error.code === error.PERMISSION_DENIED) {
+            redirectToLocationSettings();
+          } else {
+            alert("GPS Error: " + error.message);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  }
+
+  // Auto track user location (only if GPS is enabled)
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      function (position) {
+        gpsEnabled = true;
+        document.getElementById("gpsWarning").style.display = 'none';
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        map.setView([lat, lng], 18);
+      },
+      function (error) {
+        gpsEnabled = false;
+        document.getElementById("gpsWarning").style.display = 'block';
+        console.error("Location error: ", error);
+      },
+      { enableHighAccuracy: true, maximumAge: 1000 }
+    );
+  } else {
+    alert("GPS not supported by your browser");
+  }
+
+  function calculateArea() {
+    if (coordinates.length < 3) {
+      alert("कम से कम 3 पॉइंट चाहिए एरिया निकालने के लिए।");
+      return;
+    }
+
+    // Close the polygon
+    const coords = [...coordinates, coordinates[0]];
+    const polygonGeoJSON = turf.polygon([coords]);
+    const area_m2 = turf.area(polygonGeoJSON);
+    const area_sqft = area_m2 * 10.7639;
+
+    const unit = document.getElementById("unitSelect").value;
+    const unitData = unitConversions[unit];
+    const area_in_unit = area_sqft / unitData.factor;
+
+    document.getElementById("output").innerHTML = `
+      <h3>🧮 Area Result:</h3>
+      <p><b>Selected Unit:</b> ${unitData.name}</p>
+      <p><b>Total Area:</b> ${area_in_unit.toFixed(4)} ${unitData.name.split('(')[0].trim()}</p>
+      
+      <h4>Other Unit Conversions:</h4>
+      <ul>
+        <li><b>वर्ग फुट (Square Feet):</b> ${area_sqft.toFixed(2)}</li>
+        <li><b>वर्ग मीटर (Square Meters):</b> ${area_m2.toFixed(2)}</li>
+        <li><b>डिसमिल (Dismil):</b> ${(area_sqft / 435.6).toFixed(4)}</li>
+        <li><b>कठ्ठा (Katha - Bihar):</b> ${(area_sqft / 1361).toFixed(4)}</li>
+        <li><b>बीघा (Bigha - Bihar):</b> ${(area_sqft / 27220).toFixed(4)}</li>
+        <li><b>एकड़ (Acre):</b> ${(area_sqft / 43560).toFixed(4)}</li>
+      </ul>
+    `;
+  }
+
+  // Initialize unit info
+  showUnitInfo();
+</script>
+
+</body>
+</html>
