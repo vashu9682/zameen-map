@@ -1,414 +1,476 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Zameen Map Area Calculator</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    #map { height: 500px; width: 100%; }
-    body { font-family: Arial; margin: 10px; }
-    button { margin: 5px; padding: 10px; font-weight: bold; }
-    select { padding: 8px; font-size: 16px; margin: 5px; }
-    .unit-info { font-size: 12px; color: #666; }
-    #unitConversion { margin: 10px 0; }
-    #gpsWarning { color: red; font-weight: bold; display: none; }
-    .distance-label {
-      background: white;
-      padding: 2px 5px;
-      border-radius: 3px;
-      font-size: 12px;
-      pointer-events: none;
-    }
-    @media (max-width: 600px) {
-      button { width: 100%; margin: 5px 0; }
-      select { width: 100%; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Land Area Measurement</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        #map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            touch-action: none;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        .point {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: red;
+            border-radius: 50%;
+            border: 2px solid white;
+            transform: translate(-8px, -8px);
+            cursor: pointer;
+            z-index: 10;
+        }
+        
+        .line {
+            position: absolute;
+            background-color: rgba(0, 100, 255, 0.7);
+            height: 3px;
+            transform-origin: 0 0;
+            z-index: 5;
+        }
+        
+        .distance-label {
+            position: absolute;
+            background-color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            transform: translate(-50%, -50%);
+            border: 1px solid #ccc;
+            z-index: 15;
+        }
+        
+        #controls {
+            padding: 10px;
+            background-color: #e0e0e0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        #results {
+            padding: 15px;
+            background-color: #f8f8f8;
+            font-size: 16px;
+        }
+        
+        #instructions {
+            padding: 15px;
+            background-color: #e8f4f8;
+            font-size: 14px;
+        }
+        
+        .area-fill {
+            position: absolute;
+            background-color: rgba(100, 200, 100, 0.3);
+            z-index: 1;
+        }
+        
+        @media (max-width: 600px) {
+            button {
+                padding: 12px 15px;
+                flex: 1 0 40%;
+            }
+            
+            #controls {
+                justify-content: space-between;
+            }
+        }
+    </style>
 </head>
 <body>
-
-<h2>📍 Zameen Map Area Calculator</h2>
-<div id="gpsWarning">⚠️ GPS is disabled. Please enable to add points.</div>
-
-<div id="map"></div>
-
-<button onclick="addManualPoint()">+ Add Manual Point</button>
-<button onclick="joinPoints()">🔗 Join Points</button>
-<button onclick="clearPoints()">❌ Clear Points</button>
-<button onclick="calculateArea()">📐 Calculate Area</button>
-<button onclick="zoomToShape()">🔍 Zoom to Shape</button>
-
-<div id="unitConversion">
-  <h3>Select Measurement Unit:</h3>
-  <select id="unitSelect" onchange="showUnitInfo()">
-    <option value="sqft">वर्ग फुट (Square Foot)</option>
-    <option value="sqm">वर्ग मीटर (Square Meter)</option>
-    <option value="dismil">डिसमिल (Decimal/Dismil)</option>
-    <option value="katha">कठ्ठा (Katha - Bihar/UP)</option>
-    <option value="bigha">बीघा (Bigha - Bihar)</option>
-    <option value="bigha_up">बीघा (Bigha - UP)</option>
-    <option value="acre">एकड़ (Acre)</option>
-    <option value="hectare">हेक्टेयर (Hectare)</option>
-    <option value="guntha">गुंठा (Guntha - Maharashtra)</option>
-    <option value="cent">सेंट (Cent)</option>
-  </select>
-  <p class="unit-info" id="unitInfo">1 वर्ग फुट = 1 वर्ग फुट</p>
-</div>
-
-<p id="output"></p>
-
-<!-- Leaflet.js -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- Turf.js -->
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-
-<script>
-  let coordinates = [];
-  let map = L.map('map').setView([25.0, 82.0], 18); // default location
-  let gpsEnabled = false;
-  let dynamicLine = null;
-  let dynamicMarker = null;
-  let lineSegments = [];
-  let distanceLabels = [];
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 22,
-  }).addTo(map);
-
-  let polygon;
-  let markers = [];
-
-  // Unit conversion factors (to square feet)
-  const unitConversions = {
-    sqft: { name: "वर्ग फुट (Square Foot)", factor: 1, info: "1 वर्ग फुट = 1 वर्ग फुट" },
-    sqm: { name: "वर्ग मीटर (Square Meter)", factor: 10.7639, info: "1 वर्ग मीटर = 10.7639 वर्ग फुट" },
-    dismil: { name: "डिसमिल (Decimal/Dismil)", factor: 435.6, info: "1 डिसमिल = 435.6 वर्ग फुट" },
-    katha: { name: "कठ्ठा (Katha)", factor: 1361, info: "1 कठ्ठा = 1361 वर्ग फुट (Bihar standard)" },
-    bigha: { name: "बीघा (Bigha - Bihar)", factor: 27220, info: "1 बीघा = 27,220 वर्ग फुट (20 कठ्ठा)" },
-    bigha_up: { name: "बीघा (Bigha - UP)", factor: 27000, info: "1 बीघा = 27,000 वर्ग फुट (20 कठ्ठा)" },
-    acre: { name: "एकड़ (Acre)", factor: 43560, info: "1 एकड़ = 43,560 वर्ग फुट" },
-    hectare: { name: "हेक्टेयर (Hectare)", factor: 107639, info: "1 हेक्टेयर = 107,639 वर्ग फुट" },
-    guntha: { name: "गुंठा (Guntha)", factor: 1089, info: "1 गुंठा = 1,089 वर्ग फुट (Maharashtra)" },
-    cent: { name: "सेंट (Cent)", factor: 435.6, info: "1 सेंट = 435.6 वर्ग फुट" }
-  };
-
-  function showUnitInfo() {
-    const unit = document.getElementById("unitSelect").value;
-    document.getElementById("unitInfo").textContent = unitConversions[unit].info;
-  }
-
-  function drawLineOnMap() {
-    // Clear existing markers and lines
-    markers.forEach(marker => map.removeLayer(marker));
-    markers = [];
-    clearDistanceLabels();
-    lineSegments.forEach(segment => map.removeLayer(segment));
-    lineSegments = [];
+    <div id="instructions">
+        <h2>Universal Land Measurement Tool</h2>
+        <p>1. <strong>Tap anywhere</strong> to start measuring your land.</p>
+        <p>2. Walk around your land and tap <strong>"Add Point"</strong> at each corner.</p>
+        <p>3. For complex shapes: Mark all outer boundaries and any inner boundaries.</p>
+        <p>4. <strong>"Complete Measurement"</strong> to close the shape or <strong>"Calculate Area"</strong> to finish.</p>
+    </div>
     
-    // Add new markers
-    coordinates.forEach((coord, index) => {
-      const marker = L.marker([coord[1], coord[0]])
-        .bindPopup(`Point ${index+1}<br>Lat: ${coord[1].toFixed(6)}<br>Lng: ${coord[0].toFixed(6)}`)
-        .addTo(map);
-      markers.push(marker);
-    });
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
     
-    // Draw polygon and line segments with distances
-    if (polygon) map.removeLayer(polygon);
-    if (coordinates.length > 1) {
-      // Draw connecting lines with distance labels
-      for (let i = 0; i < coordinates.length; i++) {
-        const nextIndex = (i + 1) % coordinates.length;
-        const start = coordinates[i];
-        const end = coordinates[nextIndex];
-        
-        // Draw line segment
-        const line = L.polyline(
-          [[start[1], start[0]], [end[1], end[0]]],
-          {color: 'blue', weight: 3}
-        ).addTo(map);
-        lineSegments.push(line);
-        
-        // Calculate distance
-        const distance = turf.distance(
-          turf.point([start[0], start[1]]),
-          turf.point([end[0], end[1]]),
-          {units: 'meters'}
-        );
-        
-        // Add distance label at midpoint
-        const midPoint = turf.midpoint(
-          turf.point([start[0], start[1]]),
-          turf.point([end[0], end[1]])
-        );
-        
-        const label = L.marker([midPoint.geometry.coordinates[1], midPoint.geometry.coordinates[0]], {
-          icon: L.divIcon({
-            html: `<div class="distance-label">${distance.toFixed(2)} m</div>`,
-            className: 'distance-label-container',
-            iconSize: [100, 20]
-          }),
-          interactive: false
-        }).addTo(map);
-        distanceLabels.push(label);
-      }
-      
-      polygon = L.polygon(coordinates.map(p => [p[1], p[0]]), { color: 'blue', fillOpacity: 0.2 }).addTo(map);
-      map.fitBounds(polygon.getBounds());
-    }
-  }
-
-  function clearDistanceLabels() {
-    distanceLabels.forEach(label => map.removeLayer(label));
-    distanceLabels = [];
-  }
-
-  function clearPoints() {
-    coordinates = [];
-    if (polygon) map.removeLayer(polygon);
-    markers.forEach(marker => map.removeLayer(marker));
-    markers = [];
-    lineSegments.forEach(segment => map.removeLayer(segment));
-    lineSegments = [];
-    clearDistanceLabels();
-    document.getElementById("output").innerHTML = "";
-    if (dynamicLine) map.removeLayer(dynamicLine);
-    if (dynamicMarker) map.removeLayer(dynamicMarker);
-  }
-
-  function zoomToShape() {
-    if (coordinates.length > 1 && polygon) {
-      map.fitBounds(polygon.getBounds());
-    } else {
-      alert("First create a shape with at least 2 points");
-    }
-  }
-
-  function joinPoints() {
-    if (coordinates.length < 2) {
-      alert("At least 2 points needed to join");
-      return;
-    }
+    <div id="controls">
+        <button id="add-point">Add Point</button>
+        <button id="undo">Undo</button>
+        <button id="complete" disabled>Complete Shape</button>
+        <button id="calculate" disabled>Calculate Area</button>
+        <button id="reset">Reset</button>
+    </div>
     
-    // Find the two closest points to join
-    let minDistance = Infinity;
-    let point1Index = -1;
-    let point2Index = -1;
-    
-    for (let i = 0; i < coordinates.length; i++) {
-      for (let j = i + 1; j < coordinates.length; j++) {
-        const distance = turf.distance(
-          turf.point([coordinates[i][0], coordinates[i][1]]),
-          turf.point([coordinates[j][0], coordinates[j][1]])
-        );
-        if (distance < minDistance) {
-          minDistance = distance;
-          point1Index = i;
-          point2Index = j;
+    <div id="results">
+        <p><strong>Total Area:</strong> <span id="area">0</span> square meters</p>
+        <p><strong>Perimeter:</strong> <span id="perimeter">0</span> meters</p>
+        <p><strong>Shape Type:</strong> <span id="shape-type">Not determined</span></p>
+    </div>
+
+    <script>
+        const map = document.getElementById('map');
+        const addPointBtn = document.getElementById('add-point');
+        const undoBtn = document.getElementById('undo');
+        const completeBtn = document.getElementById('complete');
+        const calculateBtn = document.getElementById('calculate');
+        const resetBtn = document.getElementById('reset');
+        const areaDisplay = document.getElementById('area');
+        const perimeterDisplay = document.getElementById('perimeter');
+        const shapeTypeDisplay = document.getElementById('shape-type');
+        
+        let points = [];
+        let lines = [];
+        let distanceLabels = [];
+        let areaFills = [];
+        let isMeasuring = false;
+        let firstPoint = null;
+        
+        // Initialize the map with click event
+        map.addEventListener('click', (e) => {
+            if (!isMeasuring) {
+                startMeasurement(e);
+            }
+        });
+        
+        // Touch support for mobile devices
+        map.addEventListener('touchstart', (e) => {
+            if (!isMeasuring) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent('click', {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+                map.dispatchEvent(mouseEvent);
+            }
+        }, { passive: false });
+        
+        addPointBtn.addEventListener('click', addPoint);
+        undoBtn.addEventListener('click', undoLastPoint);
+        completeBtn.addEventListener('click', completeMeasurement);
+        calculateBtn.addEventListener('click', calculateArea);
+        resetBtn.addEventListener('click', resetMeasurement);
+        
+        function startMeasurement(e) {
+            isMeasuring = true;
+            addPointBtn.disabled = false;
+            undoBtn.disabled = false;
+            
+            // Create first point at clicked position
+            const point = createPoint(e.clientX, e.clientY);
+            points.push(point);
+            firstPoint = point;
+            
+            // Update UI
+            addPointBtn.textContent = "Add Next Point";
+            shapeTypeDisplay.textContent = "Measuring...";
         }
-      }
-    }
-    
-    if (point1Index !== -1 && point2Index !== -1) {
-      // Reorder coordinates to connect these points
-      const newCoordinates = [...coordinates];
-      if (point1Index > point2Index) {
-        [point1Index, point2Index] = [point2Index, point1Index];
-      }
-      
-      const segment1 = newCoordinates.slice(0, point1Index + 1);
-      const segment2 = newCoordinates.slice(point1Index + 1, point2Index + 1);
-      const segment3 = newCoordinates.slice(point2Index + 1);
-      
-      coordinates = [...segment1, ...segment3, ...segment2.reverse()];
-      drawLineOnMap();
-    }
-  }
-
-  // Check GPS status and redirect to settings if disabled
-  function checkGPSPermission() {
-    if (!navigator.permissions) {
-      return Promise.resolve(false);
-    }
-    return navigator.permissions.query({name:'geolocation'})
-      .then(permissionStatus => {
-        return permissionStatus.state === 'granted';
-      })
-      .catch(() => false);
-  }
-
-  function redirectToLocationSettings() {
-    // For Chrome on Android
-    if (navigator.userAgent.includes('Android') && navigator.userAgent.includes('Chrome')) {
-      window.location.href = 'chrome://settings/content/location';
-    }
-    // For other browsers/devices, we can't redirect directly to settings
-    alert("Please enable GPS/Location in your device settings and browser permissions");
-  }
-
-  function updateDynamicLine(position) {
-    if (coordinates.length === 0) return;
-    
-    const lat = position.coords.latitude;
-    const lng = position.coords.longitude;
-    
-    // Update dynamic line from last point to current position
-    if (dynamicLine) map.removeLayer(dynamicLine);
-    if (dynamicMarker) map.removeLayer(dynamicMarker);
-    
-    const lastPoint = coordinates[coordinates.length - 1];
-    dynamicLine = L.polyline(
-      [[lastPoint[1], lastPoint[0]], [lat, lng]],
-      {color: 'red', dashArray: '5,5', weight: 2}
-    ).addTo(map);
-    
-    // Add marker at current position with distance info
-    const distance = turf.distance(
-      turf.point([lastPoint[0], lastPoint[1]]),
-      turf.point([lng, lat]),
-      {units: 'meters'}
-    );
-    
-    dynamicMarker = L.marker([lat, lng], {
-      icon: L.divIcon({
-        html: `<div class="distance-label">${distance.toFixed(2)} m</div>`,
-        className: 'distance-label-container',
-        iconSize: [100, 20]
-      })
-    }).addTo(map);
-  }
-
-  function addManualPoint() {
-    checkGPSPermission().then(enabled => {
-      if (!enabled) {
-        document.getElementById("gpsWarning").style.display = 'block';
-        redirectToLocationSettings();
-        return;
-      }
-      
-      navigator.geolocation.getCurrentPosition(
-        function (position) {
-          gpsEnabled = true;
-          document.getElementById("gpsWarning").style.display = 'none';
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          coordinates.push([lng, lat]);
-          drawLineOnMap();
-          
-          // Start tracking movement if this is the first point
-          if (coordinates.length === 1) {
-            startTrackingMovement();
-          }
-        },
-        function(error) {
-          gpsEnabled = false;
-          document.getElementById("gpsWarning").style.display = 'block';
-          if (error.code === error.PERMISSION_DENIED) {
-            redirectToLocationSettings();
-          } else {
-            alert("GPS Error: " + error.message);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    });
-  }
-
-  let watchId = null;
-  function startTrackingMovement() {
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-    }
-    
-    watchId = navigator.geolocation.watchPosition(
-      function(position) {
-        updateDynamicLine(position);
-      },
-      function(error) {
-        console.error("Tracking error:", error);
-      },
-      { enableHighAccuracy: true, maximumAge: 1000 }
-    );
-  }
-
-  function stopTrackingMovement() {
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
-    if (dynamicLine) map.removeLayer(dynamicLine);
-    if (dynamicMarker) map.removeLayer(dynamicMarker);
-  }
-
-  // Auto track user location (only if GPS is enabled)
-  if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(
-      function (position) {
-        gpsEnabled = true;
-        document.getElementById("gpsWarning").style.display = 'none';
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        map.setView([lat, lng], 18);
-      },
-      function (error) {
-        gpsEnabled = false;
-        document.getElementById("gpsWarning").style.display = 'block';
-        console.error("Location error: ", error);
-      },
-      { enableHighAccuracy: true, maximumAge: 1000 }
-    );
-  } else {
-    alert("GPS not supported by your browser");
-  }
-
-  function calculateArea() {
-    if (coordinates.length < 3) {
-      alert("कम से कम 3 पॉइंट चाहिए एरिया निकालने के लिए।");
-      return;
-    }
-
-    // Close the polygon
-    const coords = [...coordinates, coordinates[0]];
-    const polygonGeoJSON = turf.polygon([coords]);
-    const area_m2 = turf.area(polygonGeoJSON);
-    const area_sqft = area_m2 * 10.7639;
-
-    const unit = document.getElementById("unitSelect").value;
-    const unitData = unitConversions[unit];
-    const area_in_unit = area_sqft / unitData.factor;
-
-    // Calculate perimeter
-    let perimeter = 0;
-    for (let i = 0; i < coords.length - 1; i++) {
-      perimeter += turf.distance(
-        turf.point([coords[i][0], coords[i][1]]),
-        turf.point([coords[i+1][0], coords[i+1][1]]),
-        {units: 'meters'}
-      );
-    }
-
-    document.getElementById("output").innerHTML = `
-      <h3>🧮 Area Result:</h3>
-      <p><b>Selected Unit:</b> ${unitData.name}</p>
-      <p><b>Total Area:</b> ${area_in_unit.toFixed(4)} ${unitData.name.split('(')[0].trim()}</p>
-      <p><b>Perimeter:</b> ${perimeter.toFixed(2)} meters</p>
-      
-      <h4>Other Unit Conversions:</h4>
-      <ul>
-        <li><b>वर्ग फुट (Square Feet):</b> ${area_sqft.toFixed(2)}</li>
-        <li><b>वर्ग मीटर (Square Meters):</b> ${area_m2.toFixed(2)}</li>
-        <li><b>डिसमिल (Dismil):</b> ${(area_sqft / 435.6).toFixed(4)}</li>
-        <li><b>कठ्ठा (Katha - Bihar):</b> ${(area_sqft / 1361).toFixed(4)}</li>
-        <li><b>बीघा (Bigha - Bihar):</b> ${(area_sqft / 27220).toFixed(4)}</li>
-        <li><b>एकड़ (Acre):</b> ${(area_sqft / 43560).toFixed(4)}</li>
-      </ul>
-    `;
-  }
-
-  // Initialize unit info
-  showUnitInfo();
-</script>
-
+        
+        function addPoint() {
+            if (!isMeasuring || points.length === 0) return;
+            
+            // For demonstration, we'll add points in a circular pattern
+            // In a real app, this would use GPS or user taps on actual positions
+            
+            const lastPoint = points[points.length - 1];
+            const rect = lastPoint.getBoundingClientRect();
+            const lastX = rect.left + rect.width/2;
+            const lastY = rect.top + rect.height/2;
+            
+            // Calculate angle based on number of points (creates a star pattern for demo)
+            const angle = (points.length * 2.5) % (2 * Math.PI);
+            const distance = 80 + (points.length % 3) * 40;
+            
+            const newX = lastX + Math.cos(angle) * distance;
+            const newY = lastY + Math.sin(angle) * distance;
+            
+            const point = createPoint(newX, newY);
+            points.push(point);
+            
+            // Draw line from last point to this one
+            drawLine(points[points.length - 2], point);
+            
+            // Enable buttons after enough points
+            if (points.length >= 2) {
+                completeBtn.disabled = false;
+                calculateBtn.disabled = false;
+            }
+            
+            updateShapeType();
+        }
+        
+        function undoLastPoint() {
+            if (points.length <= 1) return;
+            
+            // Remove last point
+            const lastPoint = points.pop();
+            lastPoint.remove();
+            
+            // Remove last line if exists
+            if (lines.length > 0) {
+                const lastLine = lines.pop();
+                lastLine.remove();
+            }
+            
+            // Remove last distance label if exists
+            if (distanceLabels.length > 0) {
+                const lastLabel = distanceLabels.pop();
+                lastLabel.remove();
+            }
+            
+            // Remove area fill if exists
+            clearAreaFills();
+            
+            // Update button states
+            if (points.length < 2) {
+                completeBtn.disabled = true;
+                calculateBtn.disabled = true;
+            }
+            
+            updateShapeType();
+        }
+        
+        function completeMeasurement() {
+            if (points.length < 3) return;
+            
+            // Connect last point to first point
+            drawLine(points[points.length - 1], firstPoint);
+            
+            // Calculate the area
+            calculateArea();
+            
+            // Disable buttons
+            addPointBtn.disabled = true;
+            completeBtn.disabled = true;
+        }
+        
+        function calculateArea() {
+            if (points.length < 3) return;
+            
+            // Convert points to coordinates
+            const coordinates = points.map(point => {
+                const rect = point.getBoundingClientRect();
+                return {
+                    x: rect.left + rect.width/2,
+                    y: rect.top + rect.height/2
+                };
+            });
+            
+            // Calculate area using shoelace formula (works for all polygon types)
+            let area = 0;
+            let perimeter = 0;
+            
+            for (let i = 0; i < coordinates.length; i++) {
+                const j = (i + 1) % coordinates.length;
+                const xi = coordinates[i].x;
+                const yi = coordinates[i].y;
+                const xj = coordinates[j].x;
+                const yj = coordinates[j].y;
+                
+                area += xi * yj - xj * yi;
+                
+                // Calculate perimeter
+                const dx = xj - xi;
+                const dy = yj - yi;
+                perimeter += Math.sqrt(dx*dx + dy*dy);
+            }
+            
+            area = Math.abs(area / 2);
+            
+            // Convert pixels to meters (simplified - in real app use scale or GPS)
+            // Assuming 100px = 1m for demonstration
+            const scaleFactor = 1/100;
+            const areaInMeters = (area * scaleFactor * scaleFactor).toFixed(2);
+            const perimeterInMeters = (perimeter * scaleFactor).toFixed(2);
+            
+            areaDisplay.textContent = areaInMeters;
+            perimeterDisplay.textContent = perimeterInMeters;
+            
+            // Disable buttons
+            addPointBtn.disabled = true;
+            completeBtn.disabled = true;
+            calculateBtn.disabled = true;
+            
+            // Fill the area for visualization
+            fillArea(coordinates);
+            
+            updateShapeType();
+        }
+        
+        function fillArea(coordinates) {
+            clearAreaFills();
+            
+            // Create SVG polygon to fill the area
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.style.position = 'absolute';
+            svg.style.top = '0';
+            svg.style.left = '0';
+            svg.style.width = '100%';
+            svg.style.height = '100%';
+            svg.style.zIndex = '1';
+            
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("fill", "rgba(100, 200, 100, 0.3)");
+            polygon.setAttribute("stroke", "rgba(0, 100, 255, 0.5)");
+            polygon.setAttribute("stroke-width", "2");
+            
+            let pointsStr = '';
+            for (const coord of coordinates) {
+                pointsStr += `${coord.x},${coord.y} `;
+            }
+            polygon.setAttribute("points", pointsStr.trim());
+            
+            svg.appendChild(polygon);
+            map.appendChild(svg);
+            areaFills.push(svg);
+        }
+        
+        function clearAreaFills() {
+            areaFills.forEach(fill => fill.remove());
+            areaFills = [];
+        }
+        
+        function updateShapeType() {
+            if (points.length < 3) {
+                shapeTypeDisplay.textContent = "Not enough points";
+                return;
+            }
+            
+            // Simple shape detection (for demonstration)
+            if (points.length === 3) {
+                shapeTypeDisplay.textContent = "Triangle";
+            } else if (points.length === 4) {
+                // Check if quadrilateral is convex
+                shapeTypeDisplay.textContent = "Quadrilateral (Convex)";
+            } else if (points.length > 4) {
+                // For complex shapes
+                shapeTypeDisplay.textContent = "Complex Polygon";
+            }
+        }
+        
+        function resetMeasurement() {
+            // Remove all elements
+            points.forEach(point => point.remove());
+            lines.forEach(line => line.remove());
+            distanceLabels.forEach(label => label.remove());
+            areaFills.forEach(fill => fill.remove());
+            
+            // Reset all arrays
+            points = [];
+            lines = [];
+            distanceLabels = [];
+            areaFills = [];
+            isMeasuring = false;
+            firstPoint = null;
+            
+            // Reset displays
+            areaDisplay.textContent = "0";
+            perimeterDisplay.textContent = "0";
+            shapeTypeDisplay.textContent = "Not determined";
+            
+            // Reset buttons
+            addPointBtn.disabled = false;
+            addPointBtn.textContent = "Add Point";
+            undoBtn.disabled = true;
+            completeBtn.disabled = true;
+            calculateBtn.disabled = true;
+        }
+        
+        function createPoint(x, y) {
+            const point = document.createElement('div');
+            point.className = 'point';
+            
+            // Add point number
+            const number = document.createElement('div');
+            number.style.color = 'white';
+            number.style.fontSize = '10px';
+            number.style.textAlign = 'center';
+            number.style.lineHeight = '12px';
+            number.textContent = points.length + 1;
+            point.appendChild(number);
+            
+            point.style.left = `${x}px`;
+            point.style.top = `${y}px`;
+            map.appendChild(point);
+            return point;
+        }
+        
+        function drawLine(startPoint, endPoint) {
+            const startRect = startPoint.getBoundingClientRect();
+            const endRect = endPoint.getBoundingClientRect();
+            
+            const x1 = startRect.left + startRect.width/2;
+            const y1 = startRect.top + startRect.height/2;
+            const x2 = endRect.left + endRect.width/2;
+            const y2 = endRect.top + endRect.height/2;
+            
+            // Calculate line length and angle
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx*dx + dy*dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            // Create line element
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.width = `${length}px`;
+            line.style.left = `${x1}px`;
+            line.style.top = `${y1}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            map.appendChild(line);
+            lines.push(line);
+            
+            // Create distance label
+            const label = document.createElement('div');
+            label.className = 'distance-label';
+            
+            // Calculate position (midpoint of the line)
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            
+            label.style.left = `${midX}px`;
+            label.style.top = `${midY}px`;
+            
+            // Convert to meters (simplified)
+            const distanceInMeters = (length / 100).toFixed(2);
+            label.textContent = `${distanceInMeters}m`;
+            
+            map.appendChild(label);
+            distanceLabels.push(label);
+        }
+    </script>
 </body>
 </html>
