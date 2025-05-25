@@ -3,554 +3,491 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Land Area Measurement</title>
+    <title>भूमि मापन उपकरण | Land Measurement Tool</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
+        :root {
+            --primary: #4285F4;
+            --secondary: #34A853;
+            --danger: #EA4335;
+            --warning: #FBBC05;
+            --dark: #202124;
+            --light: #f8f9fa;
         }
         
-        #map-container {
-            flex: 1;
-            position: relative;
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 15px 0;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        @media (min-width: 768px) {
+            .app-container {
+                flex-direction: row;
+            }
+        }
+        
+        .map-container {
+            flex: 2;
+            height: 500px;
+            border-radius: 8px;
             overflow: hidden;
-            background-color: #f0f0f0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
         }
         
         #map {
-            width: 100%;
             height: 100%;
-            position: relative;
+            width: 100%;
         }
         
-        .point {
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            background-color: red;
-            border-radius: 50%;
-            border: 2px solid white;
-            transform: translate(-8px, -8px);
-            z-index: 10;
-        }
-        
-        .line {
-            position: absolute;
-            background-color: rgba(0, 100, 255, 0.7);
-            height: 3px;
-            transform-origin: 0 0;
-            z-index: 5;
-        }
-        
-        .distance-label {
-            position: absolute;
+        .controls {
+            flex: 1;
             background-color: white;
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-size: 12px;
-            transform: translate(-50%, -50%);
-            border: 1px solid #ccc;
-            z-index: 15;
-        }
-        
-        #controls {
-            padding: 10px;
-            background-color: #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            align-items: center;
+            flex-direction: column;
+            gap: 15px;
         }
         
-        button {
+        .btn {
             padding: 10px 15px;
-            background-color: #4CAF50;
-            color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
         }
         
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
         }
         
-        #results {
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+        }
+        
+        .btn-warning {
+            background-color: var(--warning);
+            color: var(--dark);
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-group input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .results {
+            background-color: #f8f9fa;
+            border-radius: 8px;
             padding: 15px;
-            background-color: #f8f8f8;
-            font-size: 16px;
+            margin-top: auto;
         }
         
-        #instructions {
+        .result-item {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .result-value {
+            font-weight: 500;
+            color: var(--primary);
+        }
+        
+        .shape-info {
+            background-color: var(--secondary);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 20px;
             padding: 15px;
-            background-color: #e8f4f8;
+            color: #666;
             font-size: 14px;
         }
         
-        .area-fill {
-            position: absolute;
-            background-color: rgba(100, 200, 100, 0.3);
-            z-index: 1;
-        }
-        
-        #gps-status {
-            padding: 10px;
-            background-color: #ffeb3b;
-            font-weight: bold;
-        }
-        
-        @media (max-width: 600px) {
-            button {
-                padding: 12px 15px;
-                flex: 1 0 40%;
+        /* Responsive adjustments */
+        @media (max-width: 767px) {
+            .map-container {
+                height: 400px;
             }
             
-            #controls {
-                justify-content: space-between;
+            .btn-group {
+                flex-direction: column;
             }
         }
     </style>
 </head>
 <body>
-    <div id="instructions">
-        <h2>GPS Land Area Measurement</h2>
-        <p>1. Click <strong>"Start Measurement"</strong> to begin</p>
-        <p>2. Walk around your land boundary - points will be added automatically</p>
-        <p>3. Click <strong>"Complete Measurement"</strong> when you return to start</p>
-        <p>4. Or click <strong>"Calculate Area"</strong> to finish at any point</p>
-    </div>
-    
-    <div id="gps-status">GPS: Waiting for initialization...</div>
-    
-    <div id="map-container">
-        <div id="map"></div>
-    </div>
-    
-    <div id="controls">
-        <button id="start-btn">Start Measurement</button>
-        <button id="add-point" disabled>Add Point Manually</button>
-        <button id="complete" disabled>Complete Measurement</button>
-        <button id="calculate" disabled>Calculate Area</button>
-        <button id="reset">Reset</button>
-    </div>
-    
-    <div id="results">
-        <p><strong>Total Area:</strong> <span id="area">0</span> square meters</p>
-        <p><strong>Perimeter:</strong> <span id="perimeter">0</span> meters</p>
-        <p><strong>Points:</strong> <span id="point-count">0</span></p>
-        <p><strong>Accuracy:</strong> <span id="accuracy">0</span> meters</p>
+    <div class="container">
+        <header>
+            <h1>भूमि मापन उपकरण</h1>
+            <p>मानचित्र पर बिंदु चुनकर जमीन का क्षेत्रफल और सीमाएँ मापें</p>
+        </header>
+        
+        <div class="app-container">
+            <div class="map-container">
+                <div id="map"></div>
+            </div>
+            
+            <div class="controls">
+                <div class="shape-info" id="shape-info">
+                    कोई आकार नहीं बनाया गया
+                </div>
+                
+                <div class="btn-group">
+                    <button id="clear-btn" class="btn btn-danger">मिटाएं</button>
+                    <button id="undo-btn" class="btn btn-warning">पिछला हटाएं</button>
+                </div>
+                
+                <div class="input-group">
+                    <input type="text" id="lat-input" placeholder="अक्षांश (Latitude)">
+                    <input type="text" id="lng-input" placeholder="देशांतर (Longitude)">
+                </div>
+                <button id="add-point-btn" class="btn btn-primary">बिंदु जोड़ें</button>
+                
+                <div class="results">
+                    <div class="result-item">
+                        <span class="result-label">आकार:</span>
+                        <span class="result-value" id="shape-type">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">परिमाप:</span>
+                        <span class="result-value" id="perimeter">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">क्षेत्रफल:</span>
+                        <span class="result-value" id="area">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">विवरण:</span>
+                        <span class="result-value" id="details">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            © 2023 भूमि मापन उपकरण | Google Maps API का उपयोग करता है
+        </footer>
     </div>
 
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry"></script>
     <script>
-        // DOM elements
-        const mapElement = document.getElementById('map');
-        const startBtn = document.getElementById('start-btn');
-        const addPointBtn = document.getElementById('add-point');
-        const completeBtn = document.getElementById('complete');
-        const calculateBtn = document.getElementById('calculate');
-        const resetBtn = document.getElementById('reset');
-        const areaDisplay = document.getElementById('area');
-        const perimeterDisplay = document.getElementById('perimeter');
-        const pointCountDisplay = document.getElementById('point-count');
-        const accuracyDisplay = document.getElementById('accuracy');
-        const gpsStatusDisplay = document.getElementById('gps-status');
+        // Initialize the map
+        let map;
+        let markers = [];
+        let polygon = null;
+        let polyline = null;
         
-        // Measurement variables
-        let points = [];
-        let lines = [];
-        let distanceLabels = [];
-        let areaFills = [];
-        let isMeasuring = false;
-        let watchId = null;
-        let firstPoint = null;
+        // Unit conversion factors (approximate)
+        const unitConversions = {
+            sqm: {
+                sqft: 10.764,
+                bigha: 0.00025, // UP standard
+                dismil: 0.0247,
+                kattha: 0.005
+            }
+        };
         
-        // Geographic functions
-        const EARTH_RADIUS = 6371000; // meters
-        
-        function toRadians(degrees) {
-            return degrees * Math.PI / 180;
-        }
-        
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const φ1 = toRadians(lat1);
-            const φ2 = toRadians(lat2);
-            const Δφ = toRadians(lat2 - lat1);
-            const Δλ = toRadians(lon2 - lon1);
-            
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            
-            return EARTH_RADIUS * c;
-        }
-        
-        function calculateAreaGeo(coords) {
-            let area = 0;
-            
-            if (coords.length < 3) return 0;
-            
-            // Convert latitude/longitude to cartesian coordinates
-            const cartesian = coords.map(coord => {
-                const φ = toRadians(coord.latitude);
-                const λ = toRadians(coord.longitude);
-                
-                return {
-                    x: EARTH_RADIUS * Math.cos(φ) * Math.cos(λ),
-                    y: EARTH_RADIUS * Math.cos(φ) * Math.sin(λ),
-                    z: EARTH_RADIUS * Math.sin(φ)
-                };
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 28.6139, lng: 77.2090 }, // Default to Delhi
+                zoom: 15,
+                gestureHandling: "greedy"
             });
             
-            // Calculate area using 3D shoelace formula
-            for (let i = 0; i < cartesian.length; i++) {
-                const j = (i + 1) % cartesian.length;
-                const k = (i + 2) % cartesian.length;
-                
-                // Cross product of vectors from point i
-                const dx1 = cartesian[j].x - cartesian[i].x;
-                const dy1 = cartesian[j].y - cartesian[i].y;
-                const dz1 = cartesian[j].z - cartesian[i].z;
-                
-                const dx2 = cartesian[k].x - cartesian[i].x;
-                const dy2 = cartesian[k].y - cartesian[i].y;
-                const dz2 = cartesian[k].z - cartesian[i].z;
-                
-                // Cross product components
-                const crossX = dy1 * dz2 - dz1 * dy2;
-                const crossY = dz1 * dx2 - dx1 * dz2;
-                const crossZ = dx1 * dy2 - dy1 * dx2;
-                
-                // Dot product with normal vector
-                const dot = cartesian[i].x * crossX + 
-                           cartesian[i].y * crossY + 
-                           cartesian[i].z * crossZ;
-                
-                area += dot > 0 ? Math.sqrt(crossX*crossX + crossY*crossY + crossZ*crossZ) : 0;
-            }
+            // Add click listener to the map
+            map.addListener("click", (event) => {
+                addPoint(event.latLng);
+                updateShape();
+            });
             
-            return Math.abs(area / 2);
+            // Initialize buttons
+            document.getElementById("clear-btn").addEventListener("click", clearAll);
+            document.getElementById("undo-btn").addEventListener("click", undoLast);
+            document.getElementById("add-point-btn").addEventListener("click", addManualPoint);
         }
         
-        // GPS functions
-        function startGPS() {
-            if (!navigator.geolocation) {
-                gpsStatusDisplay.textContent = "GPS not supported by your browser";
+        function addPoint(latLng) {
+            const marker = new google.maps.Marker({
+                position: latLng,
+                map: map,
+                label: (markers.length + 1).toString(),
+                draggable: true
+            });
+            
+            marker.addListener("dragend", () => {
+                updateShape();
+            });
+            
+            markers.push(marker);
+            updatePolylines();
+        }
+        
+        function updatePolylines() {
+            // Remove existing polyline/polygon
+            if (polyline) polyline.setMap(null);
+            if (polygon) polygon.setMap(null);
+            
+            if (markers.length < 2) return;
+            
+            const path = markers.map(marker => marker.getPosition());
+            
+            if (markers.length === 2) {
+                // For line
+                polyline = new google.maps.Polyline({
+                    path: path,
+                    geodesic: true,
+                    strokeColor: "#FF0000",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 3,
+                    map: map
+                });
+            } else if (markers.length >= 3) {
+                // For polygon
+                polygon = new google.maps.Polygon({
+                    paths: path,
+                    strokeColor: "#4285F4",
+                    strokeOpacity: 0.8,
+                    strokeWeight: 3,
+                    fillColor: "#4285F4",
+                    fillOpacity: 0.35,
+                    map: map
+                });
+            }
+        }
+        
+        function updateShape() {
+            const shapeInfo = document.getElementById("shape-info");
+            const shapeTypeEl = document.getElementById("shape-type");
+            const perimeterEl = document.getElementById("perimeter");
+            const areaEl = document.getElementById("area");
+            const detailsEl = document.getElementById("details");
+            
+            if (markers.length === 0) {
+                shapeInfo.textContent = "कोई आकार नहीं बनाया गया";
+                shapeTypeEl.textContent = "-";
+                perimeterEl.textContent = "-";
+                areaEl.textContent = "-";
+                detailsEl.textContent = "-";
                 return;
             }
             
-            gpsStatusDisplay.textContent = "GPS: Acquiring position...";
-            gpsStatusDisplay.style.backgroundColor = "#ffeb3b";
+            const positions = markers.map(marker => marker.getPosition());
             
-            watchId = navigator.geolocation.watchPosition(
-                position => handlePositionSuccess(position),
-                error => handlePositionError(error),
-                {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 5000
-                }
-            );
-        }
-        
-        function stopGPS() {
-            if (watchId) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-        }
-        
-        function handlePositionSuccess(position) {
-            const { latitude, longitude, accuracy } = position.coords;
-            
-            gpsStatusDisplay.textContent = `GPS: Active (Accuracy: ${accuracy.toFixed(1)}m)`;
-            gpsStatusDisplay.style.backgroundColor = "#a5d6a7";
-            accuracyDisplay.textContent = `${accuracy.toFixed(1)}m`;
-            
-            if (isMeasuring) {
-                addGPSPoint(latitude, longitude, accuracy);
-            }
-        }
-        
-        function handlePositionError(error) {
-            let message = "GPS Error: ";
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    message += "User denied the request for Geolocation.";
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    message += "Location information is unavailable.";
-                    break;
-                case error.TIMEOUT:
-                    message += "The request to get user location timed out.";
-                    break;
-                case error.UNKNOWN_ERROR:
-                    message += "An unknown error occurred.";
-                    break;
-            }
-            
-            gpsStatusDisplay.textContent = message;
-            gpsStatusDisplay.style.backgroundColor = "#ef9a9a";
-        }
-        
-        // Measurement functions
-        function startMeasurement() {
-            if (isMeasuring) return;
-            
-            isMeasuring = true;
-            startGPS();
-            
-            startBtn.disabled = true;
-            addPointBtn.disabled = false;
-            completeBtn.disabled = false;
-            calculateBtn.disabled = false;
-            
-            gpsStatusDisplay.textContent = "GPS: Starting measurement...";
-        }
-        
-        function addGPSPoint(latitude, longitude, accuracy) {
-            // Don't add if accuracy is too poor
-            if (accuracy > 20) {
-                gpsStatusDisplay.textContent = `GPS: Poor accuracy (${accuracy.toFixed(1)}m) - waiting for better signal`;
-                gpsStatusDisplay.style.backgroundColor = "#ffcc80";
-                return;
-            }
-            
-            // Don't add if too close to last point (minimum 2m distance)
-            if (points.length > 0) {
-                const lastPoint = points[points.length - 1];
-                const distance = calculateDistance(
-                    lastPoint.latitude, 
-                    lastPoint.longitude,
-                    latitude,
-                    longitude
+            // Calculate perimeter (sum of all sides)
+            let perimeter = 0;
+            for (let i = 0; i < positions.length; i++) {
+                const nextIndex = (i + 1) % positions.length;
+                perimeter += google.maps.geometry.spherical.computeDistanceBetween(
+                    positions[i],
+                    positions[nextIndex]
                 );
+            }
+            
+            // Calculate area
+            let area = 0;
+            let shapeType = "बहुभुज";
+            
+            if (markers.length === 2) {
+                shapeType = "रेखा";
+                area = 0;
+            } else if (markers.length === 3) {
+                shapeType = "त्रिभुज";
+                // Calculate using Heron's formula
+                const a = google.maps.geometry.spherical.computeDistanceBetween(positions[0], positions[1]);
+                const b = google.maps.geometry.spherical.computeDistanceBetween(positions[1], positions[2]);
+                const c = google.maps.geometry.spherical.computeDistanceBetween(positions[2], positions[0]);
+                const s = (a + b + c) / 2;
+                area = Math.sqrt(s * (s - a) * (s - b) * (s - c));
+            } else if (markers.length === 4) {
+                // Check if it's a rectangle
+                const sides = [
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[0], positions[1]),
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[1], positions[2]),
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[2], positions[3]),
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[3], positions[0])
+                ];
                 
-                if (distance < 2) return;
+                const diagonals = [
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[0], positions[2]),
+                    google.maps.geometry.spherical.computeDistanceBetween(positions[1], positions[3])
+                ];
+                
+                // Check if opposite sides are equal and diagonals are equal
+                if (Math.abs(sides[0] - sides[2]) < sides[0] * 0.1 && 
+                    Math.abs(sides[1] - sides[3]) < sides[1] * 0.1 &&
+                    Math.abs(diagonals[0] - diagonals[1]) < diagonals[0] * 0.1) {
+                    
+                    if (Math.abs(sides[0] - sides[1]) < sides[0] * 0.1) {
+                        shapeType = "वर्ग";
+                    } else {
+                        shapeType = "आयत";
+                    }
+                    area = sides[0] * sides[1];
+                } else {
+                    shapeType = "चतुर्भुज";
+                    // Use shoelace formula for irregular quadrilaterals
+                    area = computeShoelaceArea(positions);
+                }
+            } else if (markers.length > 4) {
+                shapeType = "बहुभुज (" + markers.length + " भुजाएँ)";
+                area = computeShoelaceArea(positions);
             }
             
-            const point = {
-                latitude,
-                longitude,
-                accuracy,
-                timestamp: Date.now()
-            };
+            // Update UI
+            shapeInfo.textContent = `${shapeType} बनाया गया (${markers.length} बिंदु)`;
+            shapeTypeEl.textContent = shapeType;
+            perimeterEl.textContent = `${perimeter.toFixed(2)} मीटर (${(perimeter * 3.28084).toFixed(2)} फुट)`;
             
-            points.push(point);
-            pointCountDisplay.textContent = points.length;
-            
-            // Create visual point
-            createVisualPoint(point);
-            
-            // Draw lines if we have multiple points
-            if (points.length > 1) {
-                drawVisualLine(points[points.length - 2], point);
+            if (area > 0) {
+                areaEl.innerHTML = `
+                    ${area.toFixed(2)} वर्ग मीटर<br>
+                    ${(area * unitConversions.sqm.sqft).toFixed(2)} वर्ग फुट<br>
+                    ${(area * unitConversions.sqm.bigha).toFixed(4)} बीघा<br>
+                    ${(area * unitConversions.sqm.dismil).toFixed(2)} डिसमिल<br>
+                    ${(area * unitConversions.sqm.kattha).toFixed(2)} कट्ठा
+                `;
+            } else {
+                areaEl.textContent = "-";
             }
             
-            // If this is the first point, remember it
-            if (points.length === 1) {
-                firstPoint = point;
+            // Show side lengths for triangles and quadrilaterals
+            if (markers.length >= 3 && markers.length <= 4) {
+                let sideDetails = "";
+                for (let i = 0; i < positions.length; i++) {
+                    const nextIndex = (i + 1) % positions.length;
+                    const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                        positions[i],
+                        positions[nextIndex]
+                    );
+                    sideDetails += `भुजा ${i+1}: ${distance.toFixed(2)} मीटर<br>`;
+                }
+                detailsEl.innerHTML = sideDetails;
+            } else {
+                detailsEl.textContent = "-";
             }
+        }
+        
+        function computeShoelaceArea(vertices) {
+            // Using Google's geometry library for more accurate spherical calculations
+            return google.maps.geometry.spherical.computeArea(vertices);
+        }
+        
+        function clearAll() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            if (polyline) polyline.setMap(null);
+            if (polygon) polygon.setMap(null);
+            updateShape();
+        }
+        
+        function undoLast() {
+            if (markers.length === 0) return;
+            
+            const lastMarker = markers.pop();
+            lastMarker.setMap(null);
+            updatePolylines();
+            updateShape();
         }
         
         function addManualPoint() {
-            if (!isMeasuring || !watchId) return;
+            const latInput = document.getElementById("lat-input");
+            const lngInput = document.getElementById("lng-input");
             
-            // Get current position once
-            navigator.geolocation.getCurrentPosition(
-                position => {
-                    const { latitude, longitude, accuracy } = position.coords;
-                    addGPSPoint(latitude, longitude, accuracy);
-                },
-                error => {
-                    handlePositionError(error);
-                },
-                { enableHighAccuracy: true }
-            );
-        }
-        
-        function completeMeasurement() {
-            if (points.length < 3) return;
+            const lat = parseFloat(latInput.value);
+            const lng = parseFloat(lngInput.value);
             
-            // Connect last point to first point
-            drawVisualLine(points[points.length - 1], firstPoint);
-            
-            // Calculate the area
-            calculateArea();
-            
-            // Stop GPS updates
-            stopGPS();
-            
-            // Disable buttons
-            addPointBtn.disabled = true;
-            completeBtn.disabled = true;
-            calculateBtn.disabled = true;
-        }
-        
-        function calculateArea() {
-            if (points.length < 3) return;
-            
-            // Calculate area using geographic coordinates
-            const area = calculateAreaGeo(points);
-            areaDisplay.textContent = area.toFixed(2);
-            
-            // Calculate perimeter
-            let perimeter = 0;
-            for (let i = 0; i < points.length; i++) {
-                const j = (i + 1) % points.length;
-                perimeter += calculateDistance(
-                    points[i].latitude, points[i].longitude,
-                    points[j].latitude, points[j].longitude
-                );
+            if (isNaN(lat) || isNaN(lng)) {
+                alert("कृपया वैध अक्षांश और देशांतर दर्ज करें");
+                return;
             }
-            perimeterDisplay.textContent = perimeter.toFixed(2);
             
-            // Fill the area for visualization
-            fillVisualArea();
-        }
-        
-        function resetMeasurement() {
-            // Stop GPS if running
-            stopGPS();
-            
-            // Remove all visual elements
-            document.querySelectorAll('.point, .line, .distance-label, .area-fill').forEach(el => el.remove());
-            
-            // Reset all arrays
-            points = [];
-            lines = [];
-            distanceLabels = [];
-            areaFills = [];
-            isMeasuring = false;
-            firstPoint = null;
-            
-            // Reset displays
-            areaDisplay.textContent = "0";
-            perimeterDisplay.textContent = "0";
-            pointCountDisplay.textContent = "0";
-            accuracyDisplay.textContent = "0";
-            gpsStatusDisplay.textContent = "GPS: Ready to start";
-            gpsStatusDisplay.style.backgroundColor = "#ffeb3b";
-            
-            // Reset buttons
-            startBtn.disabled = false;
-            addPointBtn.disabled = true;
-            completeBtn.disabled = true;
-            calculateBtn.disabled = true;
-        }
-        
-        // Visualization functions
-        function createVisualPoint(point) {
-            // Convert lat/long to map coordinates (simplified projection)
-            // In a real app, you'd use a proper mapping library like Leaflet
-            const x = (point.longitude + 180) * (window.innerWidth / 360);
-            const y = (90 - point.latitude) * (window.innerHeight / 180);
-            
-            const pointElement = document.createElement('div');
-            pointElement.className = 'point';
-            pointElement.style.left = `${x}px`;
-            pointElement.style.top = `${y}px`;
-            
-            // Add point number
-            const number = document.createElement('div');
-            number.style.color = 'white';
-            number.style.fontSize = '10px';
-            number.style.textAlign = 'center';
-            number.style.lineHeight = '12px';
-            number.textContent = points.length;
-            pointElement.appendChild(number);
-            
-            mapElement.appendChild(pointElement);
-        }
-        
-        function drawVisualLine(startPoint, endPoint) {
-            // Convert lat/long to map coordinates
-            const x1 = (startPoint.longitude + 180) * (window.innerWidth / 360);
-            const y1 = (90 - startPoint.latitude) * (window.innerHeight / 180);
-            const x2 = (endPoint.longitude + 180) * (window.innerWidth / 360);
-            const y2 = (90 - endPoint.latitude) * (window.innerHeight / 180);
-            
-            // Calculate line length and angle
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt(dx*dx + dy*dy);
-            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            
-            // Create line element
-            const line = document.createElement('div');
-            line.className = 'line';
-            line.style.width = `${length}px`;
-            line.style.left = `${x1}px`;
-            line.style.top = `${y1}px`;
-            line.style.transform = `rotate(${angle}deg)`;
-            mapElement.appendChild(line);
-            lines.push(line);
-            
-            // Create distance label
-            const label = document.createElement('div');
-            label.className = 'distance-label';
-            
-            // Calculate position (midpoint of the line)
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            
-            label.style.left = `${midX}px`;
-            label.style.top = `${midY}px`;
-            
-            // Calculate actual distance
-            const distance = calculateDistance(
-                startPoint.latitude, startPoint.longitude,
-                endPoint.latitude, endPoint.longitude
-            );
-            
-            label.textContent = `${distance.toFixed(1)}m`;
-            mapElement.appendChild(label);
-            distanceLabels.push(label);
-        }
-        
-        function fillVisualArea() {
-            // Create SVG polygon to fill the area
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.style.position = 'absolute';
-            svg.style.top = '0';
-            svg.style.left = '0';
-            svg.style.width = '100%';
-            svg.style.height = '100%';
-            svg.style.zIndex = '1';
-            
-            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-            polygon.setAttribute("fill", "rgba(100, 200, 100, 0.3)");
-            polygon.setAttribute("stroke", "rgba(0, 100, 255, 0.5)");
-            polygon.setAttribute("stroke-width", "2");
-            
-            let pointsStr = '';
-            for (const point of points) {
-                const x = (point.longitude + 180) * (window.innerWidth / 360);
-                const y = (90 - point.latitude) * (window.innerHeight / 180);
-                pointsStr += `${x},${y} `;
+            if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                alert("अमान्य निर्देशांक: अक्षांश -90 से 90 और देशांतर -180 से 180 के बीच होना चाहिए");
+                return;
             }
-            polygon.setAttribute("points", pointsStr.trim());
             
-            svg.appendChild(polygon);
-            mapElement.appendChild(svg);
-            areaFills.push(svg);
+            addPoint(new google.maps.LatLng(lat, lng));
+            updateShape();
+            
+            // Clear inputs
+            latInput.value = "";
+            lngInput.value = "";
         }
         
-        // Event listeners
-        startBtn.addEventListener('click', startMeasurement);
-        addPointBtn.addEventListener('click', addManualPoint);
-        completeBtn.addEventListener('click', completeMeasurement);
-        calculateBtn.addEventListener('click', calculateArea);
-        resetBtn.addEventListener('click', resetMeasurement);
-        
-        // Initialize
-        resetMeasurement();
+        // Initialize the map when the window loads
+        window.onload = initMap;
     </script>
 </body>
 </html>
