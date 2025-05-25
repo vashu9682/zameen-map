@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GPS से दूरी निकालना</title>
+</head>
+<body>
+  <h2>GPS से दूरी निकालें</h2>
+  <button onclick="getStartPoint()">स्टार्ट पॉइंट सेट करें</button>
+  <button onclick="getEndPoint()">एंड पॉइंट सेट करें</button>
+  <div id="output"></div>
+
+  <script>
+    let startCoords = null;
+    let endCoords = null;
+
+    function getStartPoint() {
+      navigator.geolocation.getCurrentPosition(function(position) {
+        startCoords = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        };
+        document.getElementById("output").innerHTML = "स्टार्ट पॉइंट सेट: " + JSON.stringify(startCoords);
+      });
+    }
+
+    function getEndPoint() {
+      navigator.geolocation.getCurrentPosition(function(position) {
+        endCoords = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        };
+        document.getElementById("output").innerHTML += "<br>एंड पॉइंट सेट: " + JSON.stringify(endCoords);
+
+        if (startCoords && endCoords) {
+          const distance = calculateDistance(
+            startCoords.lat, startCoords.lon,
+            endCoords.lat, endCoords.lon
+          );
+          document.getElementById("output").innerHTML += `<br><br><b>दूरी:</b> ${distance.toFixed(2)} मीटर`;
+        }
+      });
+    }
+
+    // Haversine Formula
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // Radius of Earth in meters
+      const toRad = (value) => (value * Math.PI) / 180;
+
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+  </script>
+</body>
+</html>
