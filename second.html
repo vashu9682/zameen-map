@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>भूमि मापन उपकरण | Land Measurement Tool</title>
+    <title>भूमि मापन उपकरण | OSM + Leaflet</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root {
-            --primary: #4285F4;
-            --secondary: #34A853;
-            --danger: #EA4335;
-            --warning: #FBBC05;
-            --dark: #202124;
-            --light: #f8f9fa;
+            --primary: #2c7be5;
+            --secondary: #00d97e;
+            --danger: #e63757;
+            --warning: #f6c343;
+            --dark: #12263f;
+            --light: #f9fbfd;
         }
         
         * {
@@ -24,8 +24,8 @@
         }
         
         body {
-            background-color: #f5f5f5;
-            color: #333;
+            background-color: #f5f7fa;
+            color: #12263f;
             line-height: 1.6;
         }
         
@@ -42,12 +42,12 @@
             text-align: center;
             border-radius: 8px 8px 0 0;
             margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         h1 {
             font-size: 24px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         
         .app-container {
@@ -69,6 +69,7 @@
             overflow: hidden;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             position: relative;
+            background: #e9ecef;
         }
         
         #map {
@@ -95,6 +96,7 @@
             font-weight: 500;
             transition: all 0.3s;
             text-align: center;
+            font-size: 14px;
         }
         
         .btn-primary {
@@ -120,12 +122,14 @@
         .btn:hover {
             opacity: 0.9;
             transform: translateY(-2px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
         
         .btn-group {
@@ -141,8 +145,9 @@
         .input-group input {
             flex: 1;
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid #d8e2ef;
             border-radius: 4px;
+            font-size: 14px;
         }
         
         .results {
@@ -150,26 +155,32 @@
             border-radius: 8px;
             padding: 15px;
             margin-top: auto;
+            border: 1px solid #e3ebf6;
         }
         
         .result-item {
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e3ebf6;
         }
         
         .result-item:last-child {
             border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
         }
         
         .result-label {
             font-weight: 600;
             color: var(--dark);
+            font-size: 14px;
+            margin-bottom: 4px;
         }
         
         .result-value {
             font-weight: 500;
             color: var(--primary);
+            font-size: 14px;
         }
         
         .shape-info {
@@ -179,11 +190,12 @@
             border-radius: 4px;
             text-align: center;
             margin-bottom: 15px;
+            font-size: 14px;
         }
         
         .location-info {
             font-size: 12px;
-            color: #666;
+            color: #6e84a3;
             margin-top: 5px;
             text-align: center;
         }
@@ -192,8 +204,8 @@
             text-align: center;
             margin-top: 20px;
             padding: 15px;
-            color: #666;
-            font-size: 14px;
+            color: #95aac9;
+            font-size: 13px;
         }
         
         /* Responsive adjustments */
@@ -216,6 +228,8 @@
             border-radius: 50%;
             border-top-color: white;
             animation: spin 1s ease-in-out infinite;
+            vertical-align: middle;
+            margin-right: 5px;
         }
         
         @keyframes spin {
@@ -231,7 +245,12 @@
             border-radius: 50%;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             font-weight: bold;
-            color: #333;
+            color: #12263f;
+            border: 2px solid var(--primary);
+        }
+        
+        .leaflet-popup-content {
+            font-size: 14px;
         }
     </style>
 </head>
@@ -248,15 +267,9 @@
             </div>
             
             <div class="controls">
-              <button class="btn btn-success">
-                <a href="doori.html">server2</a>
-            </button>
                 <div class="shape-info" id="shape-info">
                     कोई आकार नहीं बनाया गया
                 </div>
-                <button class="btn btn-success">
-                  <a href="doori.html">Distance</a>
-              </button>
                 
                 <button id="current-location-btn" class="btn btn-success">
                     <span id="location-btn-text">मेरी वर्तमान स्थिति का उपयोग करें</span>
@@ -269,8 +282,8 @@
                 </div>
                 
                 <div class="input-group">
-                    <input type="text" id="lat-input" placeholder="अक्षांश (Latitude)">
-                    <input type="text" id="lng-input" placeholder="देशांतर (Longitude)">
+                    <input type="text" id="lat-input" placeholder="अक्षांश (Latitude)" readonly>
+                    <input type="text" id="lng-input" placeholder="देशांतर (Longitude)" readonly>
                 </div>
                 <button id="add-point-btn" class="btn btn-primary">बिंदु जोड़ें</button>
                 
@@ -296,7 +309,7 @@
         </div>
         
         <footer>
-            © 2023 भूमि मापन उपकरण | OpenStreetMap का उपयोग करता है
+            © 2023 भूमि मापन उपकरण | OpenStreetMap और Leaflet.js का उपयोग करता है
         </footer>
     </div>
 
@@ -312,14 +325,21 @@
         let polyline = null;
         let watchId = null;
         let currentLocationMarker = null;
+        let accuracyCircle = null;
         
         // Unit conversion factors (approximate)
         const unitConversions = {
             sqm: {
-                sqft: 10.764,
-                bigha: 0.00025, // UP standard
-                dismil: 0.0247,
-                kattha: 0.005
+                sqft: 10.7639,
+                bigha: 0.00025,  // UP standard (1 Bigha = 2500 sqm)
+                dismil: 0.0247,  // 1 Dismil = 40.468 sqm
+                kattha: 0.005,    // 1 Kattha = 200 sqm (Nepal)
+                acre: 0.000247105,
+                hectare: 0.0001
+            },
+            meter: {
+                feet: 3.28084,
+                yard: 1.09361
             }
         };
         
@@ -374,6 +394,12 @@
                     map.removeLayer(currentLocationMarker);
                     currentLocationMarker = null;
                 }
+                
+                // Remove accuracy circle if exists
+                if (accuracyCircle) {
+                    map.removeLayer(accuracyCircle);
+                    accuracyCircle = null;
+                }
             } else {
                 // Start tracking
                 getCurrentLocation();
@@ -421,7 +447,7 @@
                         if (!currentLocationMarker) {
                             currentLocationMarker = L.circleMarker([lat, lng], {
                                 radius: 8,
-                                fillColor: "#4285F4",
+                                fillColor: "#2c7be5",
                                 color: "#fff",
                                 weight: 2,
                                 opacity: 1,
@@ -431,20 +457,20 @@
                             currentLocationMarker.setLatLng([lat, lng]);
                         }
                         
-                        // Add accuracy circle
-                        const accuracyCircle = L.circle([lat, lng], {
+                        // Remove previous accuracy circle if exists
+                        if (accuracyCircle) {
+                            map.removeLayer(accuracyCircle);
+                        }
+                        
+                        // Add new accuracy circle
+                        accuracyCircle = L.circle([lat, lng], {
                             radius: accuracy,
-                            color: '#4285F4',
-                            fillColor: '#4285F4',
+                            color: '#2c7be5',
+                            fillColor: '#2c7be5',
                             fillOpacity: 0.2,
                             weight: 1,
                             opacity: 0.4
                         }).addTo(map);
-                        
-                        // Remove previous accuracy circle after 5 seconds
-                        setTimeout(() => {
-                            map.removeLayer(accuracyCircle);
-                        }, 5000);
                     },
                     (error) => {
                         let errorMessage = "स्थान प्राप्त करने में त्रुटि: ";
@@ -503,17 +529,18 @@
             if (markers.length === 2) {
                 // For line
                 polyline = L.polyline(latlngs, {
-                    color: '#FF0000',
+                    color: '#e63757',
                     weight: 3,
-                    opacity: 1.0
+                    opacity: 1.0,
+                    dashArray: '5, 5'
                 }).addTo(map);
             } else if (markers.length >= 3) {
                 // For polygon
                 polygon = L.polygon(latlngs, {
-                    color: '#4285F4',
+                    color: '#2c7be5',
                     weight: 3,
                     opacity: 0.8,
-                    fillColor: '#4285F4',
+                    fillColor: '#2c7be5',
                     fillOpacity: 0.35
                 }).addTo(map);
             }
@@ -540,16 +567,21 @@
             
             // Calculate perimeter (sum of all sides)
             let perimeter = 0;
+            let sideDetails = "";
             for (let i = 0; i < coordinates.length; i++) {
                 const nextIndex = (i + 1) % coordinates.length;
-                perimeter += turf.distance(
+                const distance = turf.distance(
                     turf.point(coordinates[i]),
                     turf.point(coordinates[nextIndex]),
                     {units: 'meters'}
                 );
+                perimeter += distance;
+                
+                // Add to side details
+                sideDetails += `भुजा ${i+1}: ${distance.toFixed(2)} मीटर (${(distance * unitConversions.meter.feet).toFixed(2)} फीट)<br>`;
             }
             
-            // Calculate area
+            // Calculate area and shape type
             let area = 0;
             let shapeType = "बहुभुज";
             let shapeDetails = "";
@@ -557,48 +589,32 @@
             if (markers.length === 2) {
                 shapeType = "रेखा";
                 area = 0;
-                const distance = turf.distance(
-                    turf.point(coordinates[0]),
-                    turf.point(coordinates[1]),
-                    {units: 'meters'}
-                );
-                shapeDetails = `लंबाई: ${distance.toFixed(2)} मीटर`;
-            } else if (markers.length === 3) {
+                shapeDetails = sideDetails;
+            } 
+            else if (markers.length === 3) {
                 shapeType = "त्रिभुज";
-                // Calculate using Heron's formula
-                const a = turf.distance(
-                    turf.point(coordinates[0]),
-                    turf.point(coordinates[1]),
-                    {units: 'meters'}
-                );
-                const b = turf.distance(
-                    turf.point(coordinates[1]),
-                    turf.point(coordinates[2]),
-                    {units: 'meters'}
-                );
-                const c = turf.distance(
-                    turf.point(coordinates[2]),
-                    turf.point(coordinates[0]),
-                    {units: 'meters'}
-                );
-                const s = (a + b + c) / 2;
-                area = Math.sqrt(s * (s - a) * (s - b) * (s - c));
+                // Create a polygon for area calculation
+                const trianglePolygon = turf.polygon([coordinates.concat([coordinates[0]])]);
+                area = turf.area(trianglePolygon);
                 
                 // Calculate angles
+                const a = turf.distance(turf.point(coordinates[0]), turf.point(coordinates[1]), {units: 'meters'});
+                const b = turf.distance(turf.point(coordinates[1]), turf.point(coordinates[2]), {units: 'meters'});
+                const c = turf.distance(turf.point(coordinates[2]), turf.point(coordinates[0]), {units: 'meters'});
+                
                 const angleA = Math.acos((b*b + c*c - a*a)/(2*b*c)) * (180/Math.PI);
                 const angleB = Math.acos((a*a + c*c - b*b)/(2*a*c)) * (180/Math.PI);
                 const angleC = 180 - angleA - angleB;
                 
                 shapeDetails = `
-                    भुजा AB: ${a.toFixed(2)} मीटर<br>
-                    भुजा BC: ${b.toFixed(2)} मीटर<br>
-                    भुजा CA: ${c.toFixed(2)} मीटर<br>
+                    ${sideDetails}
                     कोण A: ${angleA.toFixed(2)}°<br>
                     कोण B: ${angleB.toFixed(2)}°<br>
                     कोण C: ${angleC.toFixed(2)}°
                 `;
-            } else if (markers.length === 4) {
-                // Check if it's a rectangle
+            } 
+            else if (markers.length === 4) {
+                // Check if it's a rectangle or square
                 const sides = [
                     turf.distance(turf.point(coordinates[0]), turf.point(coordinates[1]), {units: 'meters'}),
                     turf.distance(turf.point(coordinates[1]), turf.point(coordinates[2]), {units: 'meters'}),
@@ -621,43 +637,36 @@
                     } else {
                         shapeType = "आयत";
                     }
+                    // For rectangle/square, use simple length × width
                     area = sides[0] * sides[1];
                 } else {
                     shapeType = "चतुर्भुज";
-                    // Use turf.area for irregular quadrilaterals
-                    area = turf.area(turf.polygon([coordinates.concat([coordinates[0]])])) / 10000 * 10000; // Convert to sq meters
+                    // For irregular quadrilaterals, use turf.area
+                    const quadPolygon = turf.polygon([coordinates.concat([coordinates[0]])]);
+                    area = turf.area(quadPolygon);
                 }
                 
                 shapeDetails = `
-                    भुजा 1: ${sides[0].toFixed(2)} मीटर<br>
-                    भुजा 2: ${sides[1].toFixed(2)} मीटर<br>
-                    भुजा 3: ${sides[2].toFixed(2)} मीटर<br>
-                    भुजा 4: ${sides[3].toFixed(2)} मीटर<br>
+                    ${sideDetails}
                     विकर्ण 1: ${diagonals[0].toFixed(2)} मीटर<br>
                     विकर्ण 2: ${diagonals[1].toFixed(2)} मीटर
                 `;
-            } else if (markers.length > 4) {
-                shapeType = "बहुभुज (" + markers.length + " भुजाएँ)";
-                // Use turf.area for polygons
-                area = turf.area(turf.polygon([coordinates.concat([coordinates[0]])])) / 10000 * 10000; // Convert to sq meters
-                
-                // Show all side lengths
-                shapeDetails = "";
-                for (let i = 0; i < coordinates.length; i++) {
-                    const nextIndex = (i + 1) % coordinates.length;
-                    const distance = turf.distance(
-                        turf.point(coordinates[i]),
-                        turf.point(coordinates[nextIndex]),
-                        {units: 'meters'}
-                    );
-                    shapeDetails += `भुजा ${i+1}: ${distance.toFixed(2)} मीटर<br>`;
-                }
+            } 
+            else if (markers.length > 4) {
+                shapeType = `बहुभुज (${markers.length} भुजाएँ)`;
+                const polygonGeo = turf.polygon([coordinates.concat([coordinates[0]])]);
+                area = turf.area(polygonGeo);
+                shapeDetails = sideDetails;
             }
             
             // Update UI
             shapeInfo.textContent = `${shapeType} बनाया गया (${markers.length} बिंदु)`;
             shapeTypeEl.textContent = shapeType;
-            perimeterEl.textContent = `${perimeter.toFixed(2)} मीटर (${(perimeter * 3.28084).toFixed(2)} फुट)`;
+            perimeterEl.innerHTML = `
+                ${perimeter.toFixed(2)} मीटर<br>
+                ${(perimeter * unitConversions.meter.feet).toFixed(2)} फीट<br>
+                ${(perimeter * unitConversions.meter.yard).toFixed(2)} गज
+            `;
             
             if (area > 0) {
                 areaEl.innerHTML = `
@@ -665,7 +674,9 @@
                     ${(area * unitConversions.sqm.sqft).toFixed(2)} वर्ग फुट<br>
                     ${(area * unitConversions.sqm.bigha).toFixed(4)} बीघा<br>
                     ${(area * unitConversions.sqm.dismil).toFixed(2)} डिसमिल<br>
-                    ${(area * unitConversions.sqm.kattha).toFixed(2)} कट्ठा
+                    ${(area * unitConversions.sqm.kattha).toFixed(2)} कट्ठा<br>
+                    ${(area * unitConversions.sqm.acre).toFixed(4)} एकड़<br>
+                    ${(area * unitConversions.sqm.hectare).toFixed(4)} हेक्टेयर
                 `;
             } else {
                 areaEl.textContent = "-";
